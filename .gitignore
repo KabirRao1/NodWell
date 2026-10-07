@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Build output
+build/
+dist/
+
+# Model asset: downloaded at build time by scripts/fetch_model.py, verified by checksum
+models/*.task
+
+# Privacy guard (CLAUDE.md §4.1): camera frames must never reach disk.
+# These patterns catch accidental dumps; they are not a substitute for not writing them.
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.mp4
+*.avi
+*.mov
+*.mkv
+# Hand-made documentation images and UI assets are fine; add them under these paths.
+!docs/images/**
+!nodwell/ui/**/assets/**
+# Landmark recordings are opt-in user data; only curated test fixtures are committed.
+*.jsonl
+!tests/fixtures/*.jsonl
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

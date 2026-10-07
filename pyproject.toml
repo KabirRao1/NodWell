@@ -1,0 +1,75 @@
+[project]
+name = "nodwell"
+version = "0.0.1"
+description = "Hands-free computer control and communication using head movement, facial gestures, and a standard webcam."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Exact pin: tracking behaviour must not change under us (DECISIONS.md D3).
+    "mediapipe==1.0.1",
+    # mediapipe itself depends on the contrib build; adding opencv-python too would
+    # install two conflicting copies of cv2 (DECISIONS.md D8).
+    "opencv-contrib-python>=4.10",
+    "PySide6>=6.11,<6.12",
+    "pynput>=1.8,<2",
+    "pydantic>=2.13,<3",
+    "platformdirs>=4.12,<5",
+    "pyttsx3>=2.99,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "ruff>=0.16",
+    "mypy>=2.4",
+    "pyinstaller>=6.22",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nodwell"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Spikes are throwaway experiments: allow prints-as-UI and Win32/Qt naming.
+"spikes/**" = ["N802", "N803", "N806", "N815", "N816"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+files = ["nodwell", "scripts", "tests"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+# CLAUDE.md §5: strict on core/. `strict` is global-only in mypy, so the
+# individual strict flags are spelled out for these modules.
+[[tool.mypy.overrides]]
+module = "nodwell.core.*"  # matches nodwell.core itself and all submodules
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
