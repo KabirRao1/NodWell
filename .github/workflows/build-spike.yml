@@ -1,0 +1,79 @@
+name: Build spike 5 (PyInstaller self-test)
+
+# Builds the onedir self-test bundle on each OS, runs it headless, and uploads it so it
+# can be downloaded onto a clean machine (docs/MANUAL_TESTS.md, S5).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "spikes/**"
+      - "scripts/fetch_model.py"
+      - "models/face_landmarker.sha256"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/build-spike.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build + self-test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install Linux runtime libraries for Qt, OpenCV, and an X server
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libegl1 libglib2.0-0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xfixes0 libdbus-1-3
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Cache model
+        uses: actions/cache@v6
+        with:
+          path: models/face_landmarker.task
+          key: face-landmarker-${{ hashFiles('models/face_landmarker.sha256') }}
+
+      - name: Fetch and verify model
+        run: uv run python scripts/fetch_model.py
+
+      - name: Build
+        run: uv run pyinstaller --noconfirm --clean spikes/s5_pyinstaller/selftest.spec
+
+      - name: Self-test (Windows)
+        if: runner.os == 'Windows'
+        run: dist/nodwell-selftest/nodwell-selftest.exe
+
+      - name: Self-test (macOS)
+        if: runner.os == 'macOS'
+        run: dist/nodwell-selftest/nodwell-selftest
+
+      - name: Self-test (Linux, under Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dist/nodwell-selftest/nodwell-selftest
+
+      # Tar first: artifact zips drop the executable bit and symlinks on macOS/Linux.
+      - name: Package
+        shell: bash
+        run: tar -czf nodwell-selftest-${{ runner.os }}-${{ runner.arch }}.tar.gz -C dist nodwell-selftest
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nodwell-selftest-${{ runner.os }}-${{ runner.arch }}
+          path: nodwell-selftest-${{ runner.os }}-${{ runner.arch }}.tar.gz
+          retention-days: 14
