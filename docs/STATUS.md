@@ -33,8 +33,9 @@ hand. The M1 manual test covers the same ground.
   "Click types, gestures, and smoothing" steps. They include the first real latency run and
   the head-tilt direction check.
 - Whether to restore Intel Mac support, now possible with MediaPipe 0.10.21 (D20 note, D2).
-- M0: S1 to S4 manual runs, and the first push to GitHub (CI then runs the security tests on
-  macOS and Linux).
+- M0: S1 to S4 manual runs.
+- Pushed to https://github.com/KabirRao1/NodWell on 2026-10-09; the first CI runs on macOS and
+  Linux are the first time the code has been tested on those systems.
 
 ### Known gaps and risks
 - Not yet measured: yaw/pitch and tilt directions, gesture thresholds (calibration is M2),
