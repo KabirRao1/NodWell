@@ -82,3 +82,58 @@ one-line justification here (CLAUDE.md §13).
   `drawing_utils`), so matplotlib cannot be excluded from bundles. We set `MPLBACKEND=Agg`
   before importing MediaPipe so it never selects a GUI backend.
 - No new dependencies were added beyond CLAUDE.md §5; these are transitive.
+
+## D11. M1 threading: camera thread + one pipeline thread, latest-frame slot (2026-10-09)
+
+- **Context:** the owner asked for an architecture that is "super light and fast".
+- **Options:** (a) one thread per stage with queues; (b) camera thread + one pipeline thread;
+  (c) multiprocessing.
+- **Choice:** (b). The camera thread puts frames into a one-item `LatestSlot` that overwrites
+  instead of queuing; the pipeline thread runs MediaPipe, features, filters, the engine, and OS
+  input back to back. UI and hotkeys send commands through a `queue.SimpleQueue`, drained once
+  per frame. The UI gets status snapshots through a queued Qt signal at 15 Hz.
+- **Why:** capture overlaps inference (both release the GIL), lag can never build up, and there
+  is no thread hop between tracking and moving the cursor. Processes would add copying and
+  start-up cost for no gain: the per-frame Python work is far below a millisecond.
+- **Safety:** a `SafetyGate` (`threading.Event`) is checked before every OS action. The panic
+  hotkey closes it from the hotkey thread, so output stops even if the pipeline is busy. The
+  gate reopens only when the engine *enters* Active.
+
+## D12. Pointer coordinates are OS input coordinates of the primary screen (2026-10-09)
+
+- **Context:** S2 (the DPI check) has not been run yet. On Windows, Qt 6 makes the process
+  per-monitor DPI-aware, so pynput works in physical pixels while Qt geometry is logical.
+- **Choice:** the engine works in OS input coordinates: Qt geometry × device pixel ratio on
+  Windows and X11, × 1 on macOS (Quartz events use points, like Qt). `QApplication` is created
+  before pynput. The dwell radius is scaled by the same factor. M1 covers the primary screen only.
+- **Defence:** each frame the real cursor is read back. If it isn't where the engine put it, a
+  person moved the mouse: the engine yields for 1.5 s and adopts that position.
+- **To verify:** M1 manual test step "four corners".
+
+## D13. Pause gesture: hold eyebrows up 2 s, which toggles; resume also recenters (2026-10-09)
+
+- **Context:** P0.6 needs a hands-free pause, and resume must be deliberate. The gesture engine
+  is M4, and calibration is M2.
+- **Choice:** one `HoldGesture` on `browInnerUp` (on 0.5, off 0.35, hold 2 s, cooldown 1 s).
+  It must be released before it can fire again. Resume recenters, so a user can rest with
+  their head turned and come back cleanly. The name is checked against the model's runtime
+  blendshape list; if it's missing, the gesture is disabled and the panel says so.
+- **Why eyebrows, not jaw:** yawning and talking open the jaw for seconds; a sustained
+  eyebrow raise is rarer and is a common reliable gesture for persona C.
+- **Risk:** thresholds are uncalibrated until M2. The panel shows a live meter with the
+  threshold marked, and the values are in the settings file.
+
+## D14. MediaPipe VIDEO mode (synchronous) for M1 (2026-10-09)
+
+- **Choice:** `detect_for_video` on the pipeline thread rather than LIVE_STREAM callbacks.
+- **Why:** simpler control flow, directly timeable, and the latest-frame slot already drops
+  stale frames. Revisit only if `bench/latency.py` shows inference is the bottleneck.
+
+## D15. App bundle trimming (2026-10-09)
+
+- `packaging/nodwell.spec` drops files the app never loads: `opencv_videoio_ffmpeg*.dll`
+  (video-file decoding; we only open cameras), `opengl32sw.dll` (software OpenGL; widgets paint
+  with the CPU), the Qt Quick/QML stack, virtual keyboard, PDF plugin, and Qt's translations.
+  Measured on Windows: 376 MB → 303 MB. The trimmed build passes `--smoke-test`.
+- In frozen builds matplotlib's font cache goes to the user cache folder instead of PyInstaller's
+  per-launch temp folder, so it isn't rebuilt on every start (font metadata only).

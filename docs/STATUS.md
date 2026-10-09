@@ -1,33 +1,53 @@
 # Status
 
-_Last updated: 2026-10-07_
+_Last updated: 2026-10-09_
 
-## Current milestone: M0, scaffolding and risk spikes
+## Current milestone: M1, pointer MVP (branch `m1-pointer-mvp`)
 
-### Done
-- Repo scaffolding: `pyproject.toml` (Python 3.12, pinned deps), `uv.lock`, `.gitignore`
-  (blocks image/video files), `nodwell/` and `nodwell/core/` packages (empty).
-- Tooling: ruff (lint + format), mypy (strict flags on `nodwell.core.*`, verified with a probe),
-  pytest. All pass locally on Windows (11 tests).
-- `tests/test_import_boundaries.py`: `core/` can't import Qt, OpenCV, MediaPipe, pynput, or pyttsx3.
-- `scripts/fetch_model.py`: downloads the Face Landmarker model and verifies the pinned
-  SHA-256 (tested: good, tampered, missing, and failed-download cases).
-- CI workflow (`ci.yml`): lint, format, types, and tests on Windows, macOS 14 (arm64), and Ubuntu 24.04.
-- Build workflow (`build-spike.yml`): PyInstaller self-test bundle on all three OSes.
-- Spikes S1 to S5 written. **S5 passes locally on Windows** (see SPIKE_NOTES).
-- Docs: DECISIONS (D1 to D10), SPIKE_NOTES, MANUAL_TESTS, METRICS template.
+M1 was started at the owner's request before M0's manual spike runs. **M0 is not marked
+done**: S1 to S4 were never run. The M1 manual test (docs/MANUAL_TESTS.md) covers the same
+ground: camera fps, DPI coordinates, and the overlay.
 
-### In progress / waiting on the owner
-- **S1 to S4 manual runs on Windows** (steps in `docs/MANUAL_TESTS.md`).
-- **First push to GitHub** so CI and the build workflow run. The owner creates an empty repo.
+### Done (built, automated checks green)
+- `nodwell/core/`: head pose from the transformation matrix, One Euro filter with a
+  Smoothness mapping, absolute and relative pointer (dead zone, acceleration, invert), dwell
+  detector (radius tolerance, no repeat until you move away), hold gesture (hysteresis, hold,
+  latch, cooldown), safety gate, click rate limiter, versioned settings with safe fallback,
+  latest-frame slot, stage timing, FeatureFrame recorder and replayer, interaction engine.
+- Engine behaviour: waits for a stable face, then recenters and goes Active; freezes the
+  instant the face is lost; auto-pauses after 5 s; 0.3 s grace when the face returns; pause
+  and resume by eyebrow hold (resume recenters); yields to a real mouse; suggests (never
+  applies) recentering when the resting pose drifts.
+- `tracking/`, `platform/`, `pipeline.py`: camera thread, MediaPipe VIDEO-mode tracker,
+  pynput backend behind the safety gate, global hotkeys (Ctrl+Alt+P / R / Q).
+- UI: status panel (64 px controls, live gesture meter with the threshold marked, quality
+  messages), click-through dwell ring, tray icon, single-instance lock.
+- `bench/latency.py`: per-stage p50/p95, fps, CPU, peak memory.
+- `packaging/nodwell.spec`: windowed onedir build `dist/Nodwell/Nodwell.exe`, 303 MB (was 376 MB
+  before trimming).
+- Checks: ruff, ruff format, mypy (strict on core), **87 tests** pass. `--smoke-test` passes
+  from source and from the exe (exe run with Python hidden from PATH). `bench/latency.py`
+  runs (5 s check, no face in view, so no numbers recorded).
+- Docs: DECISIONS D11 to D15, MANUAL_TESTS (M1 section).
 
-### Blocked
-- macOS arm64 and Linux X11 manual spikes: no hardware yet.
-- S5 true clean-machine test: no second PC/VM (Windows 11 Home has no Windows Sandbox).
+### Waiting on the owner
+- **M1 manual test on Windows** (docs/MANUAL_TESTS.md › M1). Includes the first real latency
+  run, which goes into METRICS.md.
+- M0: S1 to S4 manual runs (now partly covered by M1's test), first push to GitHub.
+
+### Known gaps and risks
+- Yaw/pitch direction and the eyebrow threshold come from documentation and reasoning, not
+  measurement. Manual steps 2 and 8 check them; both are one-line settings changes if wrong.
+- The camera read waited about 50 ms per frame in the one short bench run, i.e. the camera
+  delivered roughly 20 fps rather than 30. Low light can cause this (longer exposure). The
+  real latency run will tell.
+- The dev machine's primary screen reported 1920x1080 at 100%, but SPIKE_NOTES lists a
+  2880x1800 panel. Step 3 checks this.
+- Only the primary monitor is supported (P0 minimum). macOS and Linux are untested.
 
 ### Next
-- Fill in SPIKE_NOTES from the S1 to S4 results; fix anything they turn up.
-- Report M0 to the owner. M1 starts only after approval (CLAUDE.md §11).
+- Fix whatever the manual test turns up, record latency in METRICS.md, then report M1.
+- M2 (Control Center, calibration, onboarding) only after owner approval.
 
 ### Open questions
 - License: deferred by the owner (no LICENSE file yet).

@@ -82,6 +82,80 @@ uv run python scripts/fetch_model.py
 
 ---
 
+## M1 pointer MVP: Windows (about 15 minutes)
+
+These steps check the M1 acceptance criteria: move and dwell-click in any app with head
+movement alone, losing your face freezes the cursor, and the latency report runs. They also
+cover what spikes S1 to S3 were meant to check (camera fps, DPI coordinates, overlay).
+
+**Know the safety keys first.** `Ctrl+Alt+P` stops everything instantly; press it again to
+resume. `Ctrl+Alt+Q` quits. You can also grab the real mouse at any time: Nodwell backs off.
+
+**Start it** (either way):
+- Packaged: double-click `dist\Nodwell\Nodwell.exe`. To pass options, run it from a
+  terminal, e.g. `.\dist\Nodwell\Nodwell.exe --camera 1`.
+- From source: `uv run python -m nodwell` (shows the log in the terminal).
+
+Settings live in `%LOCALAPPDATA%\Nodwell\settings.json` (written the first time you change
+something in the panel). Logs are in `%LOCALAPPDATA%\Nodwell\Logs\nodwell.log`: events and
+numbers only, never images.
+
+Sit about an arm's length from the screen, in normal room light. For each step, note
+**pass / fail / partly** plus anything odd.
+
+1. **Start.** The panel appears top-right with a "Starting" pill. Look at the screen and hold
+   still: within a few seconds the pill turns "Active" and the cursor jumps to the screen
+   centre. If it stays "Starting" with "Face not found", you may be on the IR camera: quit
+   with `Ctrl+Alt+Q`, then run with `--camera 1`.
+2. **Direction.** Turn your head right: does the cursor go right? Look up: does it go up?
+   If an axis is backwards, say which one.
+3. **Four corners (display-scaling check).** Can you reach all four screen corners with a
+   comfortable head turn? Does the cursor stop short of any edge, or overshoot onto a second
+   screen? Also tell me your display resolution and scale (Settings > System > Display).
+   The app saw the primary screen as 1920x1080 at 100%.
+4. **Steadiness.** Hold the cursor on one word for 5 seconds. Rate the shake from 1 (rock
+   steady) to 5 (unusable).
+5. **Dwell click.** Open Notepad. Hover the cursor over the *File* menu and hold still: an
+   orange ring fills around the cursor for 1 second, then it clicks. Then dwell on a link in
+   a browser. Does the click land where the ring was? Is the ring see-through, and does it
+   stay on top?
+6. **No repeat clicks.** After a dwell click, keep still for 5 more seconds: no second click
+   should happen until you move away and back.
+7. **Face lost.** Cover the camera with your hand. The cursor must freeze **immediately** and
+   the pill must say "Face not found". After 5 seconds it says "Paused". Uncover: it must
+   **stay** paused.
+8. **Resume gesture.** Raise your eyebrows and hold. Watch the meter in the panel: the bar
+   must pass the black line, and the text counts "Holding... %". After 2 seconds it resumes,
+   and the cursor recentres. Tell me roughly how far past the line your eyebrows get (e.g.
+   "barely" or "easily").
+9. **Pause gesture.** While active, do the same: it pauses.
+10. **False pauses.** Use the computer normally for 2 minutes: talk, blink, smile, look
+    around. Did it ever pause or resume by itself?
+11. **Panic key.** While active, press `Ctrl+Alt+P`: everything stops instantly. Press again:
+    it resumes.
+12. **Recenter.** Lean or turn so the cursor sits off-centre, then press `Ctrl+Alt+R` and
+    check that your current pose becomes the new centre. Also dwell on the panel's
+    *Recenter* button.
+13. **Pause by dwell.** Dwell on the panel's *Pause* button. It pauses. (Resume with the
+    gesture or `Ctrl+Alt+P`.)
+14. **Relative mode.** Dwell on *Relative*. Tilting your head now pushes the cursor like a
+    joystick; facing the screen stops it. Is it usable? Too fast or too slow?
+15. **Mouse override.** While active, move the real mouse. The panel says "Mouse in use",
+    Nodwell stops moving the cursor, and head control comes back about 1.5 seconds after you
+    let go.
+16. **Admin windows (expected limitation).** Open Task Manager and try to dwell-click in it.
+    Windows blocks input from normal apps to admin windows, so this is expected to fail.
+    Confirm.
+17. **Latency report.** Quit Nodwell, then sit in front of the camera and run
+    `uv run python bench/latency.py --seconds 60`. Move your head now and then (dwell
+    clicking is off; the cursor will move). Paste the whole result block, and tell me the
+    lighting conditions.
+
+Paste back: your pass/fail notes for each step, the latency result, and the last 50 lines
+of `nodwell.log` if anything failed.
+
+---
+
 ## M0 spikes: macOS (Apple Silicon) — not yet run (no hardware)
 
 Same scripts. Use TextEdit instead of Notepad. Differences to record:

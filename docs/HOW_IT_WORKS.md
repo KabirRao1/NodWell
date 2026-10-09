@@ -423,3 +423,36 @@ Qt's licence (LGPL) requires.
 - **Onedir build**: a PyInstaller output folder with an `.exe` plus its supporting files.
 - **Lockfile** (`uv.lock`): exact versions of every package, so all machines match.
 - **SHA-256**: a file fingerprint; any change to the file changes it completely.
+
+---
+
+## 12. M1 update: the pointer app
+
+M1 adds the first real application. A quick map; DECISIONS D11 to D15 explain the choices.
+
+```
+nodwell/
+  __main__.py      entry point: python -m nodwell [--camera N] [--dry-run] [--replay F] [--record F] [--smoke-test]
+  app.py           builds everything and wires it together
+  pipeline.py      the per-frame loop on its own thread
+  core/            pure Python: frame, features, filters, pointer, dwell, gestures, engine, safety, settings, ...
+  tracking/        camera thread and the MediaPipe wrapper
+  platform/        pynput mouse output, global hotkeys, Windows window styles
+  ui/              status panel, dwell ring overlay, tray icon, theme
+bench/latency.py   per-stage timing report
+packaging/         PyInstaller spec for dist/Nodwell/Nodwell.exe
+```
+
+**One frame's journey:** the camera thread reads a frame and drops it into a one-item slot,
+overwriting any frame nobody took. The pipeline thread takes it, MediaPipe finds the face,
+`features.py` turns the 4x4 matrix into yaw/pitch/roll, the One Euro filters smooth them, and
+the engine decides where the cursor goes and whether a dwell click fires. The safety gate is
+checked, then pynput moves the cursor. About 15 times a second a status snapshot goes to the UI.
+
+**Run it:** `uv run python -m nodwell`, or build `uv run pyinstaller --noconfirm --clean
+packaging/nodwell.spec` and run `dist\Nodwell\Nodwell.exe`. Caregiver keys: Ctrl+Alt+P
+pause/resume (instant stop), Ctrl+Alt+R recenter, Ctrl+Alt+Q quit.
+
+**Test without a camera:** `uv run python -m nodwell --replay tests/fixtures/dwell_then_face_lost.jsonl`
+plays recorded numbers through the real app without touching the mouse, and `--smoke-test`
+runs the whole app on blank frames and exits 0 if everything worked.
