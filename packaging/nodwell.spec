@@ -7,9 +7,10 @@
 # Recipe proven by spike 5 (spikes/s5_pyinstaller/selftest.spec), plus trimming of files
 # the app never loads, to keep the download small.
 import re
+from importlib.util import find_spec
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
 HERE = Path(SPECPATH).resolve()  # noqa: F821  (SPECPATH is injected by PyInstaller)
 ROOT = HERE.parent
@@ -18,10 +19,21 @@ datas = [
     (str(ROOT / "models" / "face_landmarker.task"), "models"),
     (str(ROOT / "models" / "face_landmarker.sha256"), "models"),
 ]
-# mediapipe 1.x loads mediapipe/tasks/c/libmediapipe.* by package-relative path.
+# MediaPipe's native libraries (0.10.21: the framework bindings and the OpenCV library they
+# ship) must keep their package-relative paths.
 binaries = collect_dynamic_libs("mediapipe")
-# pynput picks its OS backend by name at runtime, invisible to static analysis.
-hiddenimports = collect_submodules("pynput")
+# pynput picks its OS backend by name at runtime, invisible to static analysis. List every
+# module from pynput's files rather than collect_submodules(), which imports them at build
+# time and silently drops the Linux backend on a build machine with no display.
+_pynput_dir = Path(find_spec("pynput").submodule_search_locations[0])
+hiddenimports = sorted(
+    {
+        ("pynput." + ".".join(p.relative_to(_pynput_dir).with_suffix("").parts)).removesuffix(
+            ".__init__"
+        )
+        for p in _pynput_dir.rglob("*.py")
+    }
+)
 
 a = Analysis(  # noqa: F821
     [str(HERE / "entry.py")],

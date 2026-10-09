@@ -5,9 +5,10 @@
 #   dist/nodwell-selftest/nodwell-selftest(.exe)
 #
 # Findings this spec encodes are written up in docs/SPIKE_NOTES.md (S5).
+from importlib.util import find_spec
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_dynamic_libs, copy_metadata
 
 HERE = Path(SPECPATH).resolve()  # noqa: F821  (SPECPATH is injected by PyInstaller)
 ROOT = HERE.parents[1]
@@ -20,13 +21,23 @@ datas = [
 for dist in ("mediapipe", "opencv-contrib-python", "PySide6", "pynput"):
     datas += copy_metadata(dist)
 
-# mediapipe 1.x is a ctypes wrapper: it loads mediapipe/tasks/c/libmediapipe.{dll,so,dylib}
-# via importlib.resources, so the library must sit at that package-relative path.
+# MediaPipe's native libraries (0.10.21: the framework bindings and the OpenCV library they
+# ship) must keep their package-relative paths.
 binaries = collect_dynamic_libs("mediapipe")
 
-# pynput chooses its OS backend (pynput.mouse._win32 / _darwin / _xorg) at import time
-# by name, which PyInstaller's static analysis cannot see.
-hiddenimports = collect_submodules("pynput")
+# pynput chooses its OS backend (pynput.mouse._win32 / _darwin / _xorg) at import time by
+# name, which static analysis can't see. List every module from pynput's files instead of
+# collect_submodules(): that imports each one at build time, and on a build machine with no
+# display the Linux (_xorg) backend fails to import and is silently left out.
+_pynput_dir = Path(find_spec("pynput").submodule_search_locations[0])
+hiddenimports = sorted(
+    {
+        ("pynput." + ".".join(p.relative_to(_pynput_dir).with_suffix("").parts)).removesuffix(
+            ".__init__"
+        )
+        for p in _pynput_dir.rglob("*.py")
+    }
+)
 
 a = Analysis(  # noqa: F821
     [str(HERE / "selftest.py")],
