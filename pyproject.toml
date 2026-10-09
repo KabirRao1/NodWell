@@ -16,6 +16,9 @@ dependencies = [
     "pyttsx3>=2.99,<3",
 ]
 
+[project.scripts]
+nodwell = "nodwell.__main__:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1",
@@ -47,11 +50,16 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF"]
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 python_version = "3.12"
-files = ["nodwell", "scripts", "tests"]
+files = ["nodwell", "scripts", "tests", "bench"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
+
+# No type information ships with these; adding stub packages would be a new dependency.
+[[tool.mypy.overrides]]
+module = ["mediapipe", "mediapipe.*", "pynput"]
+ignore_missing_imports = true
 
 # CLAUDE.md §5: strict on core/. `strict` is global-only in mypy, so the
 # individual strict flags are spelled out for these modules.
