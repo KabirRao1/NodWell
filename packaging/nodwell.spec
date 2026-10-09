@@ -30,7 +30,20 @@ a = Analysis(  # noqa: F821
     datas=datas,
     hiddenimports=hiddenimports,
     # matplotlib can't be excluded: mediapipe.tasks.python.vision imports it eagerly (D10).
-    excludes=["tkinter", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtNetwork"],
+    # pydantic.mypy (a type-checker plugin) drags in mypy and its native helpers; none of
+    # it runs in the app (docs/SECURITY_AUDIT.md F8).
+    excludes=[
+        "tkinter",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtNetwork",
+        "pydantic.mypy",
+        "mypy",
+        "mypy_extensions",
+        "ast_serialize",
+        "librt",
+        "setuptools",
+    ],
     noarchive=False,
 )
 
@@ -42,6 +55,11 @@ TRIM = [
     r"plugins[/\\]platforminputcontexts[/\\]",  # virtual keyboard plugin (needs QtQuick)
     r"plugins[/\\]imageformats[/\\]qpdf",  # PDF image plugin (needs Qt6Pdf)
     r"PySide6[/\\]translations[/\\]",  # Qt's own UI translations; we use _() (i18n.py)
+    # Windows 10+ provides the Universal CRT and API-set DLLs itself. PyInstaller otherwise
+    # copies them from whatever program is on the build machine's PATH (here a Java
+    # install): not reproducible, and a planted DLL could ride along (SECURITY_AUDIT F7).
+    r"(^|[/\\])api-ms-win-[^/\\]*\.dll$",
+    r"(^|[/\\])ucrtbase\.dll$",
 ]
 _trim = re.compile("|".join(TRIM), re.IGNORECASE)
 a.binaries = [b for b in a.binaries if not _trim.search(b[0])]
