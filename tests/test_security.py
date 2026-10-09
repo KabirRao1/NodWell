@@ -360,3 +360,43 @@ def test_missing_model_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(paths, "resource_dir", lambda: tmp_path)
     with pytest.raises(paths.ModelError):
         paths.load_model()
+
+
+# ---------------------------------------------------------------- supply chain
+
+
+def test_mediapipe_native_code_has_no_usage_telemetry() -> None:
+    """MediaPipe >= 0.10.30 / 1.x embeds a Clearcut client that uploads usage analytics to
+    play.googleapis.com from native code (SECURITY_AUDIT F0). 0.10.21 does not. This guards
+    against an accidental upgrade: it fails if the uploader shows up in the installed wheel.
+    """
+    import mediapipe
+
+    root = Path(mediapipe.__file__).parent
+    natives = [p for p in root.rglob("*") if p.suffix.lower() in {".pyd", ".dll", ".so", ".dylib"}]
+    assert natives, "no native MediaPipe libraries found"
+    markers = (b"play.googleapis.com", b"ClearcutLoggingClient", b"clearcut backend")
+    offenders = [
+        f"{p.relative_to(root)}: {m.decode()}"
+        for p in natives
+        for m in markers
+        if m in p.read_bytes()
+    ]
+    assert offenders == []
+
+
+def test_vulnerable_protobuf_json_parser_is_not_reachable() -> None:
+    """protobuf 4.25.x (pinned by MediaPipe 0.10.21) has CVE-2026-0994, a DoS in
+    json_format.ParseDict(). Nodwell never parses protobuf JSON; this checks that loading
+    the tracker doesn't pull that module in either (SECURITY_AUDIT F9).
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import os, sys; os.environ['MPLBACKEND'] = 'Agg'\n"
+        "import nodwell.tracking.landmarker\n"
+        "print('google.protobuf.json_format' in sys.modules)\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip().splitlines()[-1] == "False"

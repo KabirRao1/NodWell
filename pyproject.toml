@@ -4,8 +4,9 @@ version = "0.0.1"
 description = "Hands-free computer control and communication using head movement, facial gestures, and a standard webcam."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # Exact pin: tracking behaviour must not change under us (DECISIONS.md D3).
-    "mediapipe==1.0.1",
+    # Exact pin: tracking behaviour must not change under us (DECISIONS.md D3), and 0.10.30+
+    # uploads usage telemetry from native code (D20; tests/test_security.py guards it).
+    "mediapipe==0.10.21",
     # mediapipe itself depends on the contrib build; adding opencv-python too would
     # install two conflicting copies of cv2 (DECISIONS.md D8).
     "opencv-contrib-python>=4.10",
