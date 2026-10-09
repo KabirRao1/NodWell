@@ -226,6 +226,7 @@ class StatusPanel(QWidget):
     recenter_clicked = Signal()
     quit_clicked = Signal()
     settings_changed = Signal(object)  # a new Settings object
+    click_type_selected = Signal(object)  # ClickType
 
     def __init__(self, settings: Settings) -> None:
         super().__init__(None, Qt.WindowType.WindowStaysOnTopHint)
@@ -302,6 +303,26 @@ class StatusPanel(QWidget):
             )
         )
         self.click_hint = _label("", "Detail")
+        # The same choices as the toolbar, here so they're reachable by keyboard too: the
+        # toolbar itself never takes focus (CLAUDE.md §4.3; SECURITY_AUDIT A1).
+        click_row = QHBoxLayout()
+        click_row.setSpacing(12)
+        click_group = QButtonGroup(self)
+        self.click_buttons: dict[ClickType, QPushButton] = {}
+        for ct, text in (
+            (ClickType.LEFT, _("Left")),
+            (ClickType.RIGHT, _("Right")),
+            (ClickType.DOUBLE, _("Double")),
+            (ClickType.DRAG, _("Drag")),
+            (ClickType.SCROLL, _("Scroll")),
+        ):
+            b = _button(text, "Chip", checkable=True)
+            b.setAccessibleName(_("Next click: {t}").format(t=_(CLICK_TYPE_TEXT[ct])))
+            b.clicked.connect(lambda _checked=False, ct=ct: self.click_type_selected.emit(ct))
+            click_group.addButton(b)
+            click_row.addWidget(b, 1)
+            self.click_buttons[ct] = b
+        self.click_buttons[ClickType.LEFT].setChecked(True)
         quit_btn = _button(_("Quit Nodwell"))
         quit_btn.clicked.connect(self.quit_clicked)
         hint = _label(
@@ -321,6 +342,8 @@ class StatusPanel(QWidget):
         v.setSpacing(16)
         v.addLayout(row1)
         v.addLayout(row2)
+        v.addWidget(_label(_("NEXT CLICK"), "Section"))
+        v.addLayout(click_row)
         v.addWidget(self.click_hint)
         v.addStretch(1)
         v.addWidget(quit_btn)
@@ -544,6 +567,9 @@ class StatusPanel(QWidget):
         else:
             hint = _("Right click, double click, drag and scroll are on the toolbar.")
         self.click_hint.setText(hint)
+        selected = self.click_buttons.get(s.click_type)
+        if selected is not None and not selected.isChecked():
+            selected.setChecked(True)
 
         for reading in s.gestures:
             row = self.gesture_rows.get(reading.id)

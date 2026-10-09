@@ -209,8 +209,11 @@ def run(options: Options) -> int:
 
     recorder = None
     if options.record is not None:
-        log.warning("recording FeatureFrames (numbers only, no images) to %s", options.record)
-        recorder = Recorder(options.record)
+        try:
+            recorder = Recorder(options.record)
+            log.warning("recording FeatureFrames (numbers only, no images) to %s", options.record)
+        except OSError as exc:
+            log.error("cannot record to %s (%s); continuing without recording", options.record, exc)
 
     bridge = Bridge()
     pipeline = Pipeline(
@@ -273,6 +276,7 @@ def run(options: Options) -> int:
     panel.settings_changed.connect(controller.update_settings)
     panel.quit_clicked.connect(quit_app)
     toolbar.click_type_selected.connect(controller.set_click_type)
+    panel.click_type_selected.connect(controller.set_click_type)
     tray.toggle_pause.connect(controller.toggle_pause)
     tray.recenter.connect(controller.recenter)
     tray.show_panel.connect(show_panel)

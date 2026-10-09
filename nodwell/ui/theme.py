@@ -60,6 +60,7 @@ QPushButton#Step {{
     min-width: {MIN_TARGET_PX}px; max-width: {MIN_TARGET_PX}px; padding: 0; font-size: 24px;
 }}
 QPushButton#Compact {{ min-width: 84px; padding: 0 10px; }}
+QPushButton#Chip {{ min-width: 0; padding: 0 2px; font-size: 15px; }}
 QLabel#Value {{ font-size: 17px; font-weight: 600; min-width: 70px; }}
 QLabel#RowTitle {{ font-size: 16px; font-weight: 600; }}
 QLabel#RowSub {{ color: {MUTED}; font-size: 13px; }}

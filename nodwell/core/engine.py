@@ -192,6 +192,18 @@ class _Scroll:
     direction: int = 0
 
 
+def _sanitized(frame: FeatureFrame) -> FeatureFrame:
+    """Treat a frame whose pose isn't finite as "no face".
+
+    NaN or infinity (from a broken tracker result or a hand-edited replay file) would
+    otherwise flow through the filters into cursor coordinates (SECURITY_AUDIT F6).
+    """
+    pose = (frame.yaw, frame.pitch, frame.roll)
+    if frame.face and not all(math.isfinite(v) for v in pose):
+        return FeatureFrame(t=frame.t, face=False, brightness=frame.brightness)
+    return frame
+
+
 class InteractionEngine:
     """Pure state machine from FeatureFrames to pointer actions. Single-threaded."""
 
@@ -315,6 +327,7 @@ class InteractionEngine:
         `manual_cursor` is the real cursor position when a person has just moved the mouse
         (the output layer detects that); None otherwise.
         """
+        frame = _sanitized(frame)
         t = frame.t
         dt = 0.0 if self._last_t is None else min(max(t - self._last_t, 0.0), MAX_DT_S)
         self._last_t = t
@@ -551,6 +564,8 @@ class InteractionEngine:
             score = gesture_score(
                 binding.source, frame.blendshapes, droll, g.tilt_full_deg, g.swap_tilt
             )
+            if score is not None and not math.isfinite(score):
+                score = None  # a broken reading must never count as a gesture
             if frame.blendshapes or binding.source in DERIVED_SOURCES:
                 self._available[binding.id] = score is not None
             progress = 0.0

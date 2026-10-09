@@ -13,11 +13,14 @@ noticeable lag. tau = 0 turns easing off (the cursor jumps straight to each targ
 
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
 
 from nodwell.platform.input_backend import GatedInput
+
+log = logging.getLogger(__name__)
 
 Point = tuple[float, float]
 
@@ -71,4 +74,7 @@ class PointerAnimator(threading.Thread):
                 self._current = (cx + (tx - cx) * k, cy + (ty - cy) * k)
                 # Written under our lock so a snap_to (before a click) can never be
                 # followed by a stale in-between position. Lock order: ours, then output's.
-                self.output.move_to(*self._current)
+                try:
+                    self.output.move_to(*self._current)
+                except Exception:  # keep gliding next tick rather than dying silently
+                    log.exception("pointer animator could not move the cursor")
