@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from nodwell.paths import prepare_matplotlib
@@ -38,9 +37,10 @@ class FaceTracker:
     Not thread-safe: create and use it on one thread.
     """
 
-    def __init__(self, model_path: Path) -> None:
+    def __init__(self, model: bytes) -> None:
+        """`model` is the verified model file content (see paths.load_model)."""
         options = vision.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(model_path)),
+            base_options=BaseOptions(model_asset_buffer=model),
             running_mode=vision.RunningMode.VIDEO,
             num_faces=1,
             output_face_blendshapes=True,

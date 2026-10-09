@@ -48,4 +48,23 @@ QPushButton:checked {{ background: {ACCENT}; border-color: {ACCENT}; color: whit
 QPushButton#Primary {{ background: {ACCENT}; border-color: {ACCENT}; color: white; }}
 QPushButton#Primary:hover {{ background: {ACCENT_HOVER}; }}
 QPushButton#Suggest {{ border: 3px solid {ACCENT}; }}
+QPushButton#Tab {{
+    border: none; border-bottom: 4px solid transparent; border-radius: 0;
+    background: transparent; color: {MUTED}; min-width: 90px;
+}}
+QPushButton#Tab:checked {{
+    color: {TEXT}; border-bottom: 4px solid {ACCENT}; background: transparent;
+}}
+QPushButton#Tab:focus {{ border-bottom: 4px solid {FOCUS}; }}
+QPushButton#Step {{
+    min-width: {MIN_TARGET_PX}px; max-width: {MIN_TARGET_PX}px; padding: 0; font-size: 24px;
+}}
+QPushButton#Compact {{ min-width: 84px; padding: 0 10px; }}
+QLabel#Value {{ font-size: 17px; font-weight: 600; min-width: 70px; }}
+QLabel#RowTitle {{ font-size: 16px; font-weight: 600; }}
+QLabel#RowSub {{ color: {MUTED}; font-size: 13px; }}
+QWidget#Toolbar {{ background: {BG}; border: 2px solid {BORDER}; border-radius: 16px; }}
+QWidget#Toolbar QPushButton {{
+    min-width: 88px; max-width: 88px; min-height: 72px; font-size: 15px;
+}}
 """

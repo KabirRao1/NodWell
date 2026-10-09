@@ -14,6 +14,9 @@ A face looking straight at the camera has f = (0, 0, 1).
 - yaw   = atan2(f.x, f.z): left/right turn.
 - pitch = atan2(f.y, sqrt(f.x^2 + f.z^2)): up/down.
 - roll  = atan2(r.y, r.x), with r = the rotated +x axis (first column): head tilt.
+  The canonical +x axis points to the face's left ear (the camera's right when facing it).
+  Tilting toward the right shoulder turns the face counter-clockwise as the camera sees it,
+  lifting that axis (r.y > 0), so positive roll means "tilted toward the user's right".
 
 Using the forward vector avoids choosing an Euler-angle order. The user's right is the
 camera's left (they face each other), so turning right gives f.x < 0; yaw is negated so

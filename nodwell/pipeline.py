@@ -23,7 +23,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from nodwell.core.engine import Command, InteractionEngine, Mode, Status
+from nodwell.core.engine import (
+    ApplySettings,
+    Command,
+    EngineOutput,
+    InteractionEngine,
+    Mode,
+    Status,
+)
 from nodwell.core.features import extract
 from nodwell.core.frame import FeatureFrame
 from nodwell.core.recording import read_frames
@@ -31,6 +38,7 @@ from nodwell.core.safety import SafetyGate
 from nodwell.core.settings import CameraSettings
 from nodwell.core.timing import StageStats
 from nodwell.platform.input_backend import GatedInput
+from nodwell.platform.pointer_animator import PointerAnimator
 
 if TYPE_CHECKING:
     from nodwell.tracking.camera import CameraThread
@@ -63,11 +71,11 @@ class LiveSource:
 
     live = True
 
-    def __init__(self, camera_settings: CameraSettings, model_path: Path) -> None:
+    def __init__(self, camera_settings: CameraSettings, model: bytes) -> None:
         from nodwell.tracking.camera import CameraThread
 
         self._camera: CameraThread = CameraThread(camera_settings)
-        self._model_path = model_path
+        self._model = model
         self._tracker: FaceTracker | None = None
         self._last_processed = -float("inf")
         self.error: str | None = None
@@ -86,7 +94,7 @@ class LiveSource:
         from nodwell.tracking.landmarker import FaceTracker
 
         self._camera.start()
-        self._tracker = FaceTracker(self._model_path)
+        self._tracker = FaceTracker(self._model)
 
     def next(self, min_interval_s: float, timings: Timings) -> FeatureFrame | None:
         assert self._tracker is not None, "prepare() first"
@@ -128,8 +136,8 @@ class SyntheticSource:
     error: str | None = None
     description = "synthetic frames (no camera)"
 
-    def __init__(self, model_path: Path, fps: float = 30.0) -> None:
-        self._model_path = model_path
+    def __init__(self, model: bytes, fps: float = 30.0) -> None:
+        self._model = model
         self._period = 1.0 / fps
         self._tracker: FaceTracker | None = None
         self._next_t = 0.0
@@ -139,7 +147,7 @@ class SyntheticSource:
 
         from nodwell.tracking.landmarker import FaceTracker
 
-        self._tracker = FaceTracker(self._model_path)
+        self._tracker = FaceTracker(self._model)
         self._image = np.full((480, 640, 3), 128, dtype=np.uint8)
         self._next_t = time.perf_counter()
 
@@ -206,6 +214,10 @@ class PipelineStatus:
 class Pipeline(threading.Thread):
     """Runs the per-frame loop on its own thread until `stop()`."""
 
+    # A person moved the mouse if the real cursor is this far (OS pixels) from where we
+    # last put it. Small enough to notice a hand on the mouse, large enough to ignore rounding.
+    OVERRIDE_DISTANCE_PX = 12.0
+
     def __init__(
         self,
         source: FrameSource,
@@ -225,6 +237,7 @@ class Pipeline(threading.Thread):
         self.on_status = on_status
         self.paused_fps = paused_fps
         self.recorder = recorder
+        self.animator = PointerAnimator(output, engine.settings.pointer.motion_smoothing_ms / 1000)
         self.commands: queue.SimpleQueue[Command] = queue.SimpleQueue()
         self.stats = StageStats()
         self.frames = 0
@@ -254,32 +267,28 @@ class Pipeline(threading.Thread):
             log.exception("pipeline prepare failed")
             self.gate.block()
             return
+        self.animator.start()
         last_status = 0.0
         last_mode = self.engine.mode
         try:
             while not self._stop_event.is_set():
-                while not self.commands.empty():
-                    self.engine.handle(self.commands.get_nowait())
+                self._apply_commands()
                 min_interval = 0.0 if self.engine.mode is Mode.ACTIVE else 1.0 / self.paused_fps
                 timings: Timings = {}
                 frame = self.source.next(min_interval, timings)
                 if frame is None:
                     break
                 e0 = time.perf_counter()
-                out = self.engine.update(frame, self.output.position())
+                manual = None
+                if self.engine.mode is Mode.ACTIVE:
+                    manual = self.output.external_move(self.OVERRIDE_DISTANCE_PX)
+                    if manual is not None:
+                        self.animator.clear()
+                out = self.engine.update(frame, manual)
                 e1 = time.perf_counter()
-                # The gate opens only on entering ACTIVE, never "because we're still
-                # ACTIVE": a panic block from the hotkey thread must stick until the
-                # engine has processed the matching Pause.
                 mode = self.engine.mode
-                if mode is not Mode.ACTIVE:
-                    self.gate.block()
-                elif last_mode is not Mode.ACTIVE:
-                    self.gate.allow()
-                if out.move_to is not None:
-                    self.output.move_to(*out.move_to)
-                if out.click_at is not None and self.output.click():
-                    log.info("click at %s", tuple(round(v) for v in out.click_at))
+                self._sync_gate(mode, last_mode)
+                self._dispatch(out)
                 e2 = time.perf_counter()
                 self._record(frame, timings, e1 - e0, e2 - e1, e2)
                 if self.recorder is not None:
@@ -293,9 +302,45 @@ class Pipeline(threading.Thread):
             log.exception("pipeline crashed")
         finally:
             self.gate.block()
+            self.output.release_all()  # never leave a mouse button held down
+            self.animator.stop()
             self.source.close()
             if self.recorder is not None:
                 self.recorder.close()
+
+    def _apply_commands(self) -> None:
+        while not self.commands.empty():
+            command = self.commands.get_nowait()
+            self.engine.handle(command)
+            if isinstance(command, ApplySettings):
+                self.animator.tau_s = command.settings.pointer.motion_smoothing_ms / 1000
+
+    def _sync_gate(self, mode: Mode, last_mode: Mode) -> None:
+        """Open the gate only on *entering* ACTIVE, never "because we're still ACTIVE".
+
+        A panic block from the hotkey thread must stick until the engine has processed
+        the matching Pause.
+        """
+        if mode is not Mode.ACTIVE:
+            self.gate.block()
+            self.animator.clear()
+        elif last_mode is not Mode.ACTIVE:
+            self.output.forget_written()
+            self.gate.allow()
+
+    def _dispatch(self, out: EngineOutput) -> None:
+        """Send the engine's decisions to the OS, in a safe order."""
+        if out.release_all:
+            self.output.release_all()
+        if out.clicks and out.click_at is not None:
+            # Clicks land exactly on target, not wherever the easing has got to.
+            self.animator.snap_to(*out.click_at)
+            for action in out.clicks:
+                self.output.perform(action)
+        elif out.move_to is not None:
+            self.animator.set_target(*out.move_to)
+        if out.scroll is not None:
+            self.output.scroll(*out.scroll)
 
     def _record(
         self, frame: FeatureFrame, timings: Timings, engine_s: float, dispatch_s: float, end: float

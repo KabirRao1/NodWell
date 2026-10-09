@@ -56,11 +56,12 @@ class ModelError(RuntimeError):
     """The face model is missing or doesn't match its pinned checksum."""
 
 
-def verify_model() -> Path:
-    """Check the model against its pinned SHA-256 (DECISIONS.md D5); return its path.
+def load_model() -> bytes:
+    """Read the face model and check it against its pinned SHA-256 (DECISIONS.md D5).
 
-    Same check as scripts/fetch_model.py, repeated at startup so a damaged or swapped
-    model file is refused instead of silently changing tracking behaviour.
+    Returns the verified bytes, which are handed to MediaPipe as-is. Reading once and
+    loading from memory means the file can't be swapped between the check and the load
+    (a time-of-check/time-of-use gap; docs/SECURITY_AUDIT.md F3).
     """
     model, checksum = model_path(), model_checksum_path()
     if not model.is_file() or not checksum.is_file():
@@ -69,7 +70,18 @@ def verify_model() -> Path:
             "From source, run: uv run python scripts/fetch_model.py"
         )
     expected = checksum.read_text(encoding="utf-8").split()[0].lower()
-    actual = hashlib.sha256(model.read_bytes()).hexdigest()
-    if actual != expected:
+    data = model.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected:
         raise ModelError(f"Face model {model} failed its checksum check")
-    return model
+    return data
+
+
+def lock_path() -> Path:
+    """Single-instance lock file, in a per-user folder.
+
+    Not the shared temp folder: on Linux and macOS another user could create the lock
+    there first and stop Nodwell from starting (docs/SECURITY_AUDIT.md F4).
+    """
+    folder = Path(user_cache_dir(APP_NAME, appauthor=False))
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / "nodwell.lock"

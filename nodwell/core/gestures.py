@@ -72,3 +72,41 @@ class HoldGesture:
         if value >= self.on_threshold and t - self._last_fire >= self.cooldown_s:
             self._state, self._start = _State.HOLDING, t
         return GestureUpdate(0.0, False)
+
+
+# ---------------------------------------------------------------- gesture sources
+#
+# A binding's `source` is either a blendshape name straight from the model, or one of
+# these derived sources. Every source scores 0..1 so thresholds mean the same everywhere.
+
+SMILE = "smile"
+TILT_LEFT = "head_tilt_left"
+TILT_RIGHT = "head_tilt_right"
+DERIVED_SOURCES = frozenset({SMILE, TILT_LEFT, TILT_RIGHT})
+
+
+def gesture_score(
+    source: str,
+    blendshapes: dict[str, float],
+    roll_offset_deg: float,
+    tilt_full_deg: float,
+    swap_tilt: bool = False,
+) -> float | None:
+    """Score 0..1 for one gesture source, or None if the model doesn't provide it.
+
+    Head tilt uses roll relative to the neutral pose (see core/features.py for the sign:
+    positive roll = head tilted toward the user's right shoulder), divided by
+    `tilt_full_deg` so that tilting that far scores 1.0.
+    """
+    if source == SMILE:
+        left, right = blendshapes.get("mouthSmileLeft"), blendshapes.get("mouthSmileRight")
+        if left is None or right is None:
+            return None
+        return (left + right) / 2
+    if source in (TILT_LEFT, TILT_RIGHT):
+        toward_right = roll_offset_deg / tilt_full_deg
+        if swap_tilt:
+            toward_right = -toward_right
+        signed = toward_right if source == TILT_RIGHT else -toward_right
+        return min(max(signed, 0.0), 1.0)
+    return blendshapes.get(source)

@@ -4,29 +4,43 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QObject, QStandardPaths, QTimer, Signal
+from pydantic import ValidationError
+from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QScreen
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from nodwell import paths
+from nodwell.core.actions import ClickType
 from nodwell.core.engine import (
     ApplySettings,
     InteractionEngine,
     Pause,
     PauseReason,
     Recenter,
+    Rect,
     Resume,
+    SetClickType,
+    SetOwnUi,
     SetScreen,
 )
 from nodwell.core.pointer import ScreenRect
 from nodwell.core.recording import Recorder
 from nodwell.core.safety import SafetyGate
 from nodwell.core.settings import Settings, load_settings, save_settings
+from nodwell.diagnostics import NetworkTripwire
 from nodwell.i18n import _
-from nodwell.pipeline import FrameSource, LiveSource, Pipeline, PipelineStatus, ReplaySource
+from nodwell.pipeline import (
+    FrameSource,
+    LiveSource,
+    Pipeline,
+    PipelineStatus,
+    ReplaySource,
+    SyntheticSource,
+)
 from nodwell.platform.hotkeys import GlobalHotkeys
 from nodwell.platform.input_backend import DryRunBackend, GatedInput, InputBackend
 
@@ -58,7 +72,10 @@ def primary_screen_rect() -> tuple[ScreenRect, float]:
     screen = QGuiApplication.primaryScreen()
     scale = os_pointer_scale(screen)
     g = screen.geometry()
-    rect = ScreenRect(g.x() * scale, g.y() * scale, g.width() * scale, g.height() * scale)
+    # Whole physical pixels: e.g. 1646 logical px x 1.75 = 2880.5, but the screen is 2880.
+    rect = ScreenRect(
+        round(g.x() * scale), round(g.y() * scale), int(g.width() * scale), int(g.height() * scale)
+    )
     return rect, scale
 
 
@@ -70,20 +87,26 @@ class Bridge(QObject):
 
 
 class Controller:
-    """User intents (from panel, tray, hotkeys) -> engine commands and settings changes.
+    """User intents (from panel, toolbar, tray, hotkeys) -> engine commands and settings.
 
-    `pause`, `toggle_pause`, and `recenter` are called from the hotkey thread too; they
-    only touch the thread-safe gate and command queue. Settings changes happen on the
-    main thread only.
+    `pause`, `toggle_pause`, and `recenter` are also called from the hotkey thread; they
+    only touch thread-safe objects (the gate, the output lock, the command queue).
+    Settings changes happen on the main thread only.
     """
 
-    def __init__(self, settings: Settings, pipeline: Pipeline, gate: SafetyGate) -> None:
+    def __init__(
+        self, settings: Settings, pipeline: Pipeline, gate: SafetyGate, output: GatedInput
+    ) -> None:
         self.settings = settings
         self.pipeline = pipeline
         self.gate = gate
+        self.output = output
+        self.on_settings: list[Callable[[Settings], None]] = []
 
     def pause(self) -> None:
-        self.gate.block()  # stop output now; the engine catches up on its next frame
+        # Stop output now and let go of any held button; the engine catches up next frame.
+        self.gate.block()
+        self.output.release_all()
         self.pipeline.send(Pause(PauseReason.USER))
 
     def resume(self) -> None:
@@ -99,37 +122,47 @@ class Controller:
     def recenter(self) -> None:
         self.pipeline.send(Recenter())
 
+    def set_click_type(self, click_type: ClickType) -> None:
+        self.pipeline.send(SetClickType(click_type))
+
     def update_settings(self, settings: Settings) -> None:
+        """Validate, apply live, and save. Invalid settings are refused, not applied."""
+        try:
+            # model_copy() skips validation, so re-validate everything the UI produced.
+            settings = Settings.model_validate(settings.model_dump())
+        except ValidationError:
+            log.exception("refused invalid settings from the UI")
+            return
         self.settings = settings
         self.pipeline.send(ApplySettings(settings))
+        for callback in self.on_settings:
+            callback(settings)
         try:
             save_settings(paths.settings_path(), settings)
         except OSError:
             log.exception("could not save settings")
 
-    def set_pointer_mode(self, mode: str) -> None:
-        s = self.settings
-        self.update_settings(
-            s.model_copy(update={"pointer": s.pointer.model_copy(update={"mode": mode})})
-        )
-
-    def set_dwell(self, enabled: bool) -> None:
-        s = self.settings
-        self.update_settings(
-            s.model_copy(update={"dwell": s.dwell.model_copy(update={"enabled": enabled})})
-        )
-
 
 def _single_instance_lock() -> QLockFile | None:
     """Two copies fighting over the cursor would be dangerous; allow only one."""
-    folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation)
-    lock = QLockFile(str(Path(folder) / "nodwell.lock"))
-    lock.setStaleLockTime(0)
+    lock = QLockFile(str(paths.lock_path()))
+    lock.setStaleLockTime(0)  # stale only if the owning process is gone
     return lock if lock.tryLock(100) else None
+
+
+def own_ui_rects(widgets: list[QWidget], scale: float) -> tuple[Rect, ...]:
+    """Screen rectangles of our visible windows, in OS input coordinates."""
+    rects = []
+    for w in widgets:
+        if w.isVisible():
+            g = w.frameGeometry()
+            rects.append((g.x() * scale, g.y() * scale, g.width() * scale, g.height() * scale))
+    return tuple(rects)
 
 
 def run(options: Options) -> int:
     """Start the app; returns the process exit code."""
+    tripwire = NetworkTripwire().install() if options.smoke_test else None
     app = QApplication(sys.argv)  # first: sets per-monitor DPI awareness (D12)
     app.setApplicationName("Nodwell")
     app.setQuitOnLastWindowClosed(False)
@@ -151,12 +184,10 @@ def run(options: Options) -> int:
         if options.replay is not None:
             source = ReplaySource(options.replay)
         elif options.smoke_test:
-            from nodwell.pipeline import SyntheticSource
-
-            source = SyntheticSource(paths.verify_model())
+            source = SyntheticSource(paths.load_model())
         else:
-            source = LiveSource(settings.camera, paths.verify_model())
-    except paths.ModelError as exc:
+            source = LiveSource(settings.camera, paths.load_model())
+    except (paths.ModelError, OSError) as exc:
         log.error("%s", exc)
         if not options.smoke_test:
             QMessageBox.critical(None, "Nodwell", str(exc))
@@ -191,21 +222,38 @@ def run(options: Options) -> int:
         paused_fps=settings.camera.paused_fps,
         recorder=recorder,
     )
-    controller = Controller(settings, pipeline, gate)
+    controller = Controller(settings, pipeline, gate, output)
 
     # UI (imported here so `--help` and tests don't pay for Qt widgets).
     from nodwell.ui.overlays.dwell_ring import DwellRing
     from nodwell.ui.panel import StatusPanel
+    from nodwell.ui.toolbar import ClickToolbar
     from nodwell.ui.tray import Tray
 
     panel = StatusPanel(settings)
+    toolbar = ClickToolbar()
     ring = DwellRing()
     tray = Tray()
 
     def on_status(ps: PipelineStatus) -> None:
+        s = ps.engine
         panel.update_status(ps)
-        tray.set_mode(ps.engine.mode)
-        ring.set_progress(ps.engine.dwell_progress, controller.settings.dwell.dwell_s)
+        toolbar.update_status(s)
+        tray.set_mode(s.mode)
+        ring.set_state(
+            s.dwell_progress,
+            controller.settings.dwell.dwell_s,
+            s.click_type,
+            s.dragging,
+            s.scrolling,
+            s.scroll_direction,
+        )
+
+    def apply_toolbar(s: Settings) -> None:
+        if s.toolbar.visible:
+            toolbar.show_docked(s.toolbar.edge)
+        else:
+            toolbar.hide()
 
     def quit_app() -> None:
         panel.allow_close()
@@ -216,14 +264,15 @@ def run(options: Options) -> int:
         panel.raise_()
         panel.activateWindow()
 
+    controller.on_settings.append(apply_toolbar)
     bridge.status.connect(on_status)
     bridge.quit_requested.connect(quit_app)
     panel.pause_clicked.connect(controller.pause)
     panel.resume_clicked.connect(controller.resume)
     panel.recenter_clicked.connect(controller.recenter)
-    panel.mode_selected.connect(controller.set_pointer_mode)
-    panel.dwell_toggled.connect(controller.set_dwell)
+    panel.settings_changed.connect(controller.update_settings)
     panel.quit_clicked.connect(quit_app)
+    toolbar.click_type_selected.connect(controller.set_click_type)
     tray.toggle_pause.connect(controller.toggle_pause)
     tray.recenter.connect(controller.recenter)
     tray.show_panel.connect(show_panel)
@@ -232,6 +281,7 @@ def run(options: Options) -> int:
     def on_screen_changed() -> None:
         rect, s = primary_screen_rect()
         pipeline.send(SetScreen(rect, s))
+        apply_toolbar(controller.settings)
 
     primary = QGuiApplication.primaryScreen()
     primary.geometryChanged.connect(on_screen_changed)
@@ -246,22 +296,31 @@ def run(options: Options) -> int:
         }
     )
 
-    # Errors raised on worker threads before any status arrives (e.g. camera won't open).
-    def poll_errors() -> None:
+    # Housekeeping twice a second: errors from worker threads (e.g. the camera won't
+    # open) and where our own windows are, so clicks on them stay plain left clicks.
+    last_rects: list[tuple[Rect, ...]] = [()]
+
+    def housekeeping() -> None:
         message = pipeline.error or source.error or hotkeys.error
         if message:
             panel.show_error(message)
+        rects = own_ui_rects([panel, toolbar], primary_screen_rect()[1])
+        if rects != last_rects[0]:
+            last_rects[0] = rects
+            pipeline.send(SetOwnUi(rects))
 
-    error_timer = QTimer()
-    error_timer.timeout.connect(poll_errors)
-    error_timer.start(500)
+    timer = QTimer()
+    timer.timeout.connect(housekeeping)
+    timer.start(500)
 
-    # Top-right corner: easy to reach with a head pointer, out of the way of most apps.
+    # Panel top-right, toolbar on its edge: both easy to reach with a head pointer.
     panel.adjustSize()
     avail = primary.availableGeometry()
     panel.move(avail.right() - panel.width() - 24, avail.top() + 24)
     panel.show()
+    apply_toolbar(settings)
     tray.show()
+    housekeeping()
     if not options.smoke_test:
         hotkeys.start()
     pipeline.start()  # MediaPipe loads on the pipeline thread, after the panel is up
@@ -283,19 +342,23 @@ def run(options: Options) -> int:
     pipeline.stop()
     pipeline.join(timeout=3.0)
     gate.block()
+    output.release_all()
+    toolbar.hide()
     tray.hide()
     lock.unlock()
 
     if options.smoke_test:
-        ok = pipeline.frames > 0 and pipeline.error is None
+        attempts = tripwire.attempts if tripwire is not None else []
+        ok = pipeline.frames > 0 and pipeline.error is None and not attempts
         log.info(
-            "smoke test: %s (%d frames, error=%s, stages=%s)",
+            "smoke test: %s (%d frames, error=%s, network attempts=%s, stages=%s)",
             "PASS" if ok else "FAIL",
             pipeline.frames,
             pipeline.error,
+            attempts,
             {k: v["p50"] for k, v in pipeline.stats.summary().items()},
         )
         return 0 if ok else 1
     if isinstance(backend, DryRunBackend):
-        log.info("dry run: %d moves, %d clicks", backend.moves, len(backend.clicks))
+        log.info("dry run: %d moves, %d actions", backend.moves, len(backend.actions))
     return code

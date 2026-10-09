@@ -15,43 +15,67 @@ HERE = Path(__file__).resolve().parent
 FPS = 30
 
 
-def face(t: float, yaw: float = 0.0, pitch: float = 0.0, brow: float = 0.02) -> FeatureFrame:
+def face(
+    t: float, yaw: float = 0.0, pitch: float = 0.0, roll: float = 0.0, brow: float = 0.02
+) -> FeatureFrame:
     return FeatureFrame(
         t=t,
         face=True,
         yaw=yaw,
         pitch=pitch,
+        roll=roll,
         face_size=0.15,
         brightness=120.0,
         blendshapes={"browInnerUp": brow, "jawOpen": 0.01},
     )
 
 
+class Script:
+    """Builds a frame list from (seconds, frame maker, pose) steps at FPS."""
+
+    def __init__(self) -> None:
+        self.frames: list[FeatureFrame] = []
+        self.t = 0.0
+
+    def add(self, seconds: float, make: object = face, **kw: float) -> None:
+        for _ in range(round(seconds * FPS)):
+            self.frames.append(make(self.t, **kw))  # type: ignore[operator]
+            self.t += 1 / FPS
+
+
 def dwell_then_face_lost() -> list[FeatureFrame]:
     """Start (2 s), turn right and dwell (2 s), face lost (6 s), face back (2 s)."""
-    frames: list[FeatureFrame] = []
-    t = 0.0
+    s = Script()
+    s.add(2.0)
+    s.add(2.0, yaw=6.0)
+    s.add(6.0, lambda t: FeatureFrame(t=t, face=False, brightness=120.0))
+    s.add(2.0)
+    return s.frames
 
-    def add(seconds: float, make: object, **kw: float) -> None:
-        nonlocal t
-        for _ in range(round(seconds * FPS)):
-            frames.append(make(t, **kw))  # type: ignore[operator]
-            t += 1 / FPS
 
-    add(2.0, face)
-    add(2.0, face, yaw=6.0)
-    add(6.0, lambda t: FeatureFrame(t=t, face=False, brightness=120.0))
-    add(2.0, face)
-    return frames
+def drag_then_tilt_right() -> list[FeatureFrame]:
+    """With Drag chosen on the toolbar: dwell (grab), move right and dwell (drop), come
+    back, then tilt the head right for 0.8 s (right click)."""
+    s = Script()
+    s.add(2.5)
+    s.add(2.0, yaw=6.0)
+    s.add(0.5)
+    s.add(0.8, roll=15.0)
+    s.add(0.6)
+    return s.frames
 
 
 def main() -> None:
-    path = HERE / "dwell_then_face_lost.jsonl"
-    path.unlink(missing_ok=True)
-    with Recorder(path) as rec:
-        for frame in dwell_then_face_lost():
-            rec.write(frame)
-    print(f"wrote {path}")
+    for name, frames in (
+        ("dwell_then_face_lost", dwell_then_face_lost()),
+        ("drag_then_tilt_right", drag_then_tilt_right()),
+    ):
+        path = HERE / f"{name}.jsonl"
+        path.unlink(missing_ok=True)
+        with Recorder(path) as rec:
+            for frame in frames:
+                rec.write(frame)
+        print(f"wrote {path}")
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ def main() -> int:
     gate = SafetyGate()
     backend: InputBackend = DryRunBackend() if args.no_move else PynputBackend()
     counter = FaceCounter()
-    source = LiveSource(settings.camera, paths.verify_model())
+    source = LiveSource(settings.camera, paths.load_model())
     pipeline = Pipeline(
         source,
         InteractionEngine(settings, screen, scale),
