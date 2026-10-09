@@ -456,3 +456,25 @@ pause/resume (instant stop), Ctrl+Alt+R recenter, Ctrl+Alt+Q quit.
 **Test without a camera:** `uv run python -m nodwell --replay tests/fixtures/dwell_then_face_lost.jsonl`
 plays recorded numbers through the real app without touching the mouse, and `--smoke-test`
 runs the whole app on blank frames and exits 0 if everything worked.
+
+---
+
+## 13. Update: click types, gestures, smoothing, and the security audit
+
+- **Click types** (`core/actions.py`, `ui/toolbar.py`): the toolbar at the left screen edge
+  picks what the next dwell does: right, double, drag (dwell to grab, dwell to drop), or
+  scroll (dwell on the page, then look up or down). The dwell ring shows the choice (R, 2×,
+  …). Clicks on Nodwell's own windows are always plain left clicks.
+- **Gestures** (`core/gestures.py`, Gestures tab): each binding turns a score from 0 to 1 into
+  an action once it's held past its line for long enough. Head tilt is roll compared with
+  your neutral pose. While a gesture builds, the cursor freezes where it was just before, so
+  the click lands on target.
+- **Glide** (`platform/pointer_animator.py`): a small thread eases the real cursor toward
+  where the engine wants it, about 125 times a second, so motion between camera frames is
+  smooth.
+- **Fail-safes added:** a held drag button is released on pause, panic, face loss, mouse
+  takeover, quit, or crash. Frames with impossible (NaN) poses count as "no face".
+- **Security audit:** `docs/SECURITY_AUDIT.md`. The headline finding was that MediaPipe 1.0.1
+  sent usage telemetry to Google from native code, so the project pins 0.10.21, which
+  doesn't (DECISIONS D20). `tests/test_security.py` re-checks the important properties on
+  every CI run.

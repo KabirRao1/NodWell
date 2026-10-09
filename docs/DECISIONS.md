@@ -137,3 +137,76 @@ one-line justification here (CLAUDE.md §13).
   Measured on Windows: 376 MB → 303 MB. The trimmed build passes `--smoke-test`.
 - In frozen builds matplotlib's font cache goes to the user cache folder instead of PyInstaller's
   per-launch temp folder, so it isn't rebuilt on every start (font metadata only).
+
+## D16. Cursor easing between camera frames (2026-10-09)
+
+- **Context:** the owner asked to "smooth things out". At 20–30 camera frames/s the cursor
+  moved in visible jumps.
+- **Choice:** a `PointerAnimator` thread (~125 Hz) eases the real cursor toward the engine's
+  target, with pos += (target − pos)·(1 − e^(−dt/τ)) and τ = 16 ms by default (setting
+  `pointer.motion_smoothing_ms`; "Glide between frames" in the panel, 0 = off). Clicks first
+  snap exactly to the target. Writes happen under the animator's lock (lock order: animator,
+  then output) so a stale in-between position can never follow a snap.
+- **Consequence:** "did a person move the mouse?" now compares the real cursor with what we
+  last *wrote*, not with the engine's target (`GatedInput.external_move`).
+
+## D17. Click types, toolbar, drag and scroll (2026-10-09)
+
+- **Context:** the owner asked for right and double click. This pulls P0.4 (click-type
+  toolbar) and P0.5 (scroll) forward from M4.
+- **Choice:**
+  - A docked, never-focused toolbar offers Left, Right, Double, Drag, and Scroll. A choice
+    applies to the next dwell, then reverts to Left (`dwell.sticky_click_type`).
+  - Drag: dwell to grab, dwell again to drop.
+  - Scroll: dwell to anchor, then head pitch relative to the anchor scrolls, with fractional
+    wheel steps on Windows. Turn away or rest 2.5 s to stop.
+  - Dwells and gestures landing on our own windows are always plain left clicks (`SetOwnUi`),
+    so choosing "Right" on the toolbar doesn't itself become a right click.
+  - The same choices sit on the panel's Home tab for keyboard users (SECURITY_AUDIT A1).
+- **Edge scroll zones** (optional in P0.5) are not done yet.
+
+## D18. Gesture bindings and defaults (2026-10-09)
+
+- **Choice:** settings schema v2 replaces the single pause gesture with a list of bindings
+  (source, action, on/off thresholds, hold, cooldown, enabled). It is migrated from v1.
+  - Sources: any blendshape name read from the model at runtime, plus derived `smile`,
+    `head_tilt_left`, and `head_tilt_right` (roll relative to neutral, 30° = 1.0).
+  - Defaults: eyebrows held 2 s = pause/resume; tilt right 12° for 0.4 s = right click; tilt
+    left = double click; mouth (left click) and smile (drag) are off by default.
+- **Gesture anchor:** while a gesture builds, the cursor freezes where it was 150 ms before
+  the hold began, and stays there 0.5 s after it fires, so the head movement of the gesture
+  doesn't move the click.
+- **Why tilts:** they're deliberate, rarely held by accident, and need no facial expression.
+  The tilt direction is derived from the transform maths, not yet measured; the
+  `gestures.swap_tilt` setting fixes it in one step if wrong.
+
+## D19. Logging policy (2026-10-09)
+
+- **Choice:** the persistent log keeps start-up information, warnings, and errors only.
+  Per-action details (clicks, positions) are DEBUG, off by default. A static test enforces
+  this (SECURITY_AUDIT F1).
+- **Why:** CLAUDE.md §4.1 lists what may persist; a usage trace is not on it.
+
+## D20. MediaPipe pinned to 0.10.21; supersedes the version in D3 (2026-10-09)
+
+- **Context:** the VAPT found MediaPipe 1.0.1 uploading usage telemetry to
+  `play.googleapis.com` from native code, with no documented opt-out (SECURITY_AUDIT F0).
+  That breaks CLAUDE.md §4.2.
+- **Options:** switch to 0.10.21 (reported clean); keep 1.0.1 behind an installer firewall
+  rule; keep it and disclose it; defer.
+- **Choice (owner):** 0.10.21. The exact-pin rule of D3 still applies.
+- **Verified:** no Clearcut client or endpoint in its native code; zero sockets in 3 of 3
+  probed runs of the packaged app; all tests pass.
+- **Costs:** numpy 1.26.4, OpenCV 4.11, protobuf 4.25.9 (CVE-2026-0994 is not reachable; F9).
+  MediaPipe ships OpenCV 3.4.10 (F10). jax, jaxlib, scipy, and sentencepiece are installed as
+  dependencies but not imported, so they aren't bundled.
+- **Guard:** a test fails if a future wheel contains the uploader.
+- **Note for the owner:** 0.10.21 has a `universal2` macOS wheel, so Intel Macs could be
+  supported again. D2 is unchanged until the owner decides.
+
+## D21. Release-bundle hygiene (2026-10-09)
+
+- The spec excludes the type-checker plugin chain (`pydantic.mypy` → mypy and its helpers)
+  and Windows' own UCRT/API-set DLLs. PyInstaller had copied those from a Java install on
+  the build machine's PATH (SECURITY_AUDIT F7, F8). Release builds should come from CI with a
+  clean PATH (M6).

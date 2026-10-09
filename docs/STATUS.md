@@ -2,51 +2,49 @@
 
 _Last updated: 2026-10-09_
 
-## Current milestone: M1, pointer MVP (branch `m1-pointer-mvp`)
+## Current milestone: M1, pointer MVP, plus pulled-forward click types and gestures
 
-M1 was started at the owner's request before M0's manual spike runs. **M0 is not marked
-done**: S1 to S4 were never run. The M1 manual test (docs/MANUAL_TESTS.md) covers the same
-ground: camera fps, DPI coordinates, and the overlay.
+Branch `m1-pointer-mvp`. M0 is still **not marked done**: spikes S1 to S4 were never run by
+hand. The M1 manual test covers the same ground.
 
-### Done (built, automated checks green)
-- `nodwell/core/`: head pose from the transformation matrix, One Euro filter with a
-  Smoothness mapping, absolute and relative pointer (dead zone, acceleration, invert), dwell
-  detector (radius tolerance, no repeat until you move away), hold gesture (hysteresis, hold,
-  latch, cooldown), safety gate, click rate limiter, versioned settings with safe fallback,
-  latest-frame slot, stage timing, FeatureFrame recorder and replayer, interaction engine.
-- Engine behaviour: waits for a stable face, then recenters and goes Active; freezes the
-  instant the face is lost; auto-pauses after 5 s; 0.3 s grace when the face returns; pause
-  and resume by eyebrow hold (resume recenters); yields to a real mouse; suggests (never
-  applies) recentering when the resting pose drifts.
-- `tracking/`, `platform/`, `pipeline.py`: camera thread, MediaPipe VIDEO-mode tracker,
-  pynput backend behind the safety gate, global hotkeys (Ctrl+Alt+P / R / Q).
-- UI: status panel (64 px controls, live gesture meter with the threshold marked, quality
-  messages), click-through dwell ring, tray icon, single-instance lock.
-- `bench/latency.py`: per-stage p50/p95, fps, CPU, peak memory.
-- `packaging/nodwell.spec`: windowed onedir build `dist/Nodwell/Nodwell.exe`, 303 MB (was 376 MB
-  before trimming).
-- Checks: ruff, ruff format, mypy (strict on core), **87 tests** pass. `--smoke-test` passes
-  from source and from the exe (exe run with Python hidden from PATH). `bench/latency.py`
-  runs (5 s check, no face in view, so no numbers recorded).
-- Docs: DECISIONS D11 to D15, MANUAL_TESTS (M1 section).
+### Done (built; automated checks green)
+- **M1 pointer MVP:** head pointer (absolute and relative), One Euro smoothing, dwell click
+  with progress ring, recenter, pause and resume (button, tray, hotkey, eyebrow hold),
+  freeze on face loss, auto-pause, panic hotkey, latency bench, settings file, Windows exe.
+- **Owner request, "smooth things out":** cursor glides between camera frames (D16); the
+  panel is reorganised into Home, Gestures, and Pointer tabs with live −/+ tuning.
+- **Owner request, more click types:**
+  - Click-type toolbar with Left, Right, Double, Drag, and Scroll (D17); the same choices
+    are on the panel for keyboard users.
+  - Gesture bindings with live meters (D18): tilt right = right click, tilt left = double
+    click, eyebrows = pause. Mouth and smile are available but off.
+  - Settings schema v2 with a migration from v1.
+- **Owner request, VAPT and audit:** `docs/SECURITY_AUDIT.md`. 13 findings, 11 fixed and
+  2 accepted with reasons.
+  - Most important: MediaPipe 1.0.1 sent usage telemetry to Google; it's now pinned to
+    0.10.21 (D20, owner's choice), and the packaged app was verified to open no sockets.
+  - `tests/test_security.py` adds static guards, fuzzing, and supply-chain guards.
+- **Checks:** ruff, ruff format, mypy (strict on core), and **183 tests** pass. `--smoke-test`
+  passes from source and from the exe (run with Python hidden from PATH). Exe: 302 MB, 343
+  files.
 
 ### Waiting on the owner
-- **M1 manual test on Windows** (docs/MANUAL_TESTS.md › M1). Includes the first real latency
-  run, which goes into METRICS.md.
-- M0: S1 to S4 manual runs (now partly covered by M1's test), first push to GitHub.
+- **Manual tests on Windows** (`docs/MANUAL_TESTS.md`): the "M1 pointer MVP" steps and the new
+  "Click types, gestures, and smoothing" steps. They include the first real latency run and
+  the head-tilt direction check.
+- Whether to restore Intel Mac support, now possible with MediaPipe 0.10.21 (D20 note, D2).
+- M0: S1 to S4 manual runs, and the first push to GitHub (CI then runs the security tests on
+  macOS and Linux).
 
 ### Known gaps and risks
-- Yaw/pitch direction and the eyebrow threshold come from documentation and reasoning, not
-  measurement. Manual steps 2 and 8 check them; both are one-line settings changes if wrong.
-- The camera read waited about 50 ms per frame in the one short bench run, i.e. the camera
-  delivered roughly 20 fps rather than 30. Low light can cause this (longer exposure). The
-  real latency run will tell.
-- The dev machine's primary screen reported 1920x1080 at 100%, but SPIKE_NOTES lists a
-  2880x1800 panel. Step 3 checks this.
-- Only the primary monitor is supported (P0 minimum). macOS and Linux are untested.
+- Not yet measured: yaw/pitch and tilt directions, gesture thresholds (calibration is M2),
+  the camera frame rate (about 20 fps in one short low-light check), and real latency.
+- Socket and file probes ran on Windows only.
+- Not done yet: edge scroll zones (optional in P0.5), multi-monitor beyond the primary
+  screen, code signing.
 
 ### Next
-- Fix whatever the manual test turns up, record latency in METRICS.md, then report M1.
+- Fix whatever the manual tests turn up, record latency in METRICS.md, then report M1.
 - M2 (Control Center, calibration, onboarding) only after owner approval.
 
 ### Open questions

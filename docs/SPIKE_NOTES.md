@@ -41,6 +41,10 @@ machine before claiming it.
 
 ## Findings before any manual run (from package inspection and headless runs)
 
+> **Update 2026-10-09:** findings 1 to 3 describe MediaPipe 1.0.1. The project now pins
+> 0.10.21 (DECISIONS.md D20) because 1.0.1 uploads usage telemetry from native code, which
+> the Python-level check in finding 5 could not see (SECURITY_AUDIT.md F0).
+
 1. **MediaPipe 1.x has no `mp.solutions`.** The top-level module exposes only `Image`,
    `ImageFormat`, and `tasks`. The working API is
    `mediapipe.tasks.python.vision.FaceLandmarker` with `FaceLandmarkerOptions`

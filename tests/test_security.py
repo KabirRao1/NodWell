@@ -366,9 +366,10 @@ def test_missing_model_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_mediapipe_native_code_has_no_usage_telemetry() -> None:
-    """MediaPipe >= 0.10.30 / 1.x embeds a Clearcut client that uploads usage analytics to
-    play.googleapis.com from native code (SECURITY_AUDIT F0). 0.10.21 does not. This guards
-    against an accidental upgrade: it fails if the uploader shows up in the installed wheel.
+    """MediaPipe 1.0.1 (and, per a public report, releases after 0.10.21) embeds a Clearcut
+    client that uploads usage analytics to play.googleapis.com from native code
+    (SECURITY_AUDIT F0). 0.10.21 does not. This guards against an accidental upgrade: it
+    fails if the uploader shows up in the installed wheel.
     """
     import mediapipe
 

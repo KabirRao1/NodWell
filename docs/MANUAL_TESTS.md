@@ -156,6 +156,46 @@ of `nodwell.log` if anything failed.
 
 ---
 
+## Click types, gestures, and smoothing: Windows (about 15 minutes)
+
+Added after M1: the click-type toolbar (left screen edge), head-tilt gestures, and cursor
+gliding. Same start-up and safety keys as above. While a dwell builds, the ring shows what
+it will do: nothing for a left click, **R** for right, **2×** for double, a drag symbol, or
+scroll arrows.
+
+1. **Toolbar keeps your focus.** Open Notepad, click into it, and type a word. Dwell on
+   **Right** on the toolbar. Notepad must stay the active window (title bar still active,
+   caret still blinking). Then dwell on the text in Notepad: its right-click menu opens.
+2. **Double click.** Dwell on **Double**, then dwell on a word in Notepad. The word is selected.
+3. **Drag.** Dwell on **Drag**, dwell on a window's title bar (it grabs), turn your head to
+   move it, and dwell again (it drops). Also try selecting text in Notepad by dragging.
+4. **Scroll.** Open a long web page. Dwell on **Scroll**, then dwell on the page. Look slightly
+   up or down: does it scroll smoothly at a readable speed? Turn your head well to the side:
+   does scrolling stop? Start again, then hold still for 3 s: does it stop by itself?
+5. **Tilt right gives a right click.** Hover over the Notepad text, then tilt your head toward
+   your right shoulder and hold about half a second. The right-click menu should open where
+   the cursor was before you tilted. **If you get a double click instead, the directions are
+   swapped:** on the panel's Gestures tab, press "Left and right tilt" so it says swapped, and
+   tell me.
+6. **Tilt left gives a double click** (e.g. select a word in Notepad).
+7. **No false clicks.** Use the computer normally for 2 minutes: talk, nod, look around, lean.
+   Any accidental right or double clicks? Roughly how many?
+8. **Gestures tab.** Each gesture's bar moves as you do it, and passes the black line when you
+   do it fully. "Action ▸" cycles what a gesture does; turning one Off stops it. Is the 12°
+   tilt comfortable, too much, or too little?
+9. **Glide.** Pointer tab: turn "Glide between frames" Off, move around, then turn it On. Does
+   the cursor look smoother with it On? Does it feel laggy?
+10. **Live tuning.** Pointer tab: change Smoothness, Head turn to reach the edge, and Dwell time
+    with − and +. Do the changes take effect immediately?
+11. **Panic during a drag.** Start a drag on a desktop icon (button held), then press
+    `Ctrl+Alt+P`. The icon must drop immediately (button released) and everything stop.
+12. **Keyboard.** With a real keyboard, Tab through the panel. Can you reach the "Next click"
+    buttons on the Home tab and choose one with Space?
+
+Paste back pass/fail per step, which tilt direction worked, and your answers to 7 to 9.
+
+---
+
 ## M0 spikes: macOS (Apple Silicon) — not yet run (no hardware)
 
 Same scripts. Use TextEdit instead of Notepad. Differences to record:
