@@ -16,6 +16,9 @@ jobs:
         # macos-14 is Apple Silicon; Intel Mac is unsupported (DECISIONS.md D2).
         os: [windows-latest, macos-14, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash  # also on Windows, so the annotate helper script runs everywhere
     steps:
       - uses: actions/checkout@v7
 
@@ -27,13 +30,13 @@ jobs:
         run: uv sync --locked
 
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run ruff check --output-format=github .
 
       - name: Ruff format check
         run: uv run ruff format --check .
 
       - name: Mypy
-        run: uv run mypy
+        run: bash .github/scripts/run-and-annotate.sh "Mypy" uv run mypy
 
       - name: Pytest
-        run: uv run pytest
+        run: bash .github/scripts/run-and-annotate.sh "Pytest" uv run pytest

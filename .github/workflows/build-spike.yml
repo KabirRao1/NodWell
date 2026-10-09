@@ -25,6 +25,9 @@ jobs:
       matrix:
         os: [windows-latest, macos-14, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash  # also on Windows, so the annotate helper script runs everywhere
     steps:
       - uses: actions/checkout@v7
 
@@ -57,15 +60,15 @@ jobs:
 
       - name: Self-test (Windows)
         if: runner.os == 'Windows'
-        run: dist/nodwell-selftest/nodwell-selftest.exe
+        run: bash .github/scripts/run-and-annotate.sh "Self-test (Windows)" dist/nodwell-selftest/nodwell-selftest.exe
 
       - name: Self-test (macOS)
         if: runner.os == 'macOS'
-        run: dist/nodwell-selftest/nodwell-selftest
+        run: bash .github/scripts/run-and-annotate.sh "Self-test (macOS)" dist/nodwell-selftest/nodwell-selftest
 
       - name: Self-test (Linux, under Xvfb)
         if: runner.os == 'Linux'
-        run: xvfb-run -a dist/nodwell-selftest/nodwell-selftest
+        run: bash .github/scripts/run-and-annotate.sh "Self-test (Linux)" xvfb-run -a dist/nodwell-selftest/nodwell-selftest
 
       # Tar first: artifact zips drop the executable bit and symlinks on macOS/Linux.
       - name: Package

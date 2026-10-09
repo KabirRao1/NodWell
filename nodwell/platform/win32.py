@@ -24,7 +24,9 @@ OVERLAY_EXSTYLE = (
 
 def add_exstyle(hwnd: int, bits: int) -> None:
     """OR `bits` into a window's extended style."""
-    if not IS_WINDOWS:
+    # A literal sys.platform check (not IS_WINDOWS): type checkers only skip Windows-only
+    # code such as ctypes.WinDLL when they see this exact form.
+    if sys.platform != "win32":
         return
     import ctypes
     from ctypes import wintypes
